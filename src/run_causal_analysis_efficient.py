@@ -39,7 +39,7 @@ from lightgbm import LGBMRegressor
 import glob
 
 
-def causal_model(RESULT_PATH, EVENT_NAME, propensity_score_model, n_estimator_reg, max_depth_Xgb_reg, is_ORS_feature):
+def causal_model(RESULT_PATH, EVENT_NAME, propensity_score_model, n_estimator_reg, max_depth_Xgb_reg):
     # df = pd.read_parquet(f'{RESULT_PATH}/')
     # df.to_parquet(f'{RESULT_PATH}/{Y}_final.parquet')
 
