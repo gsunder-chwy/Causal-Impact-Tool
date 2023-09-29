@@ -29,16 +29,16 @@ POSTGRESS_PROD_INFO = {
 }
 
 #define the event name
-EVENT_NAME = "Promotions"#"Parallelization" #"IAC_Corrugate"
+EVENT_NAME = "Promotions"
 #define start date_time-Control
-START_DT_C = "2023-08-18" #"2023-07-26" #"2023-02-13" #"2023-09-05"# "2023-08-21" #"2023-08-03" #"2023-08-03"
+START_DT_C = "2023-08-18"
 #defined end date_time-Control
-END_DT_C = "2023-08-24" #"2023-08-08" #"2023-02-26" # #"2023-09-06"  #"2023-08-09" #"2023-08-09"
+END_DT_C = "2023-08-24"
 #define start date_time-Treatment
 #First date of treatement is assumed to the start of the event
-START_DT_T = "2023-08-25" #"2023-08-11" #"2023-03-13" #"2023-09-06" #"2023-08-11"
+START_DT_T = "2023-08-25"
 #defined end date_time-Treatment
-END_DT_T = "2023-08-31" #"2023-08-24" #"2023-03-26"  #"2023-09-07"
+END_DT_T = "2023-08-31" 
 start_hour, end_hour = '06:00:00', '06:00:00' 
 # event date should be a valid date between start and end date
 # It is recommended that the control and treatment period is equal
