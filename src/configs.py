@@ -29,29 +29,30 @@ POSTGRESS_PROD_INFO = {
 }
 
 #define the event name
-EVENT_NAME = "Promotions"
+EVENT_NAME = "VCPU"
 #define start date_time-Control
-START_DT_C = "2023-08-18"
+START_DT_C = "2023-09-02"#"2023-08-14"
 #defined end date_time-Control
-END_DT_C = "2023-08-24"
+END_DT_C = "2023-09-06"#"2023-08-20"
 #define start date_time-Treatment
 #First date of treatement is assumed to the start of the event
-START_DT_T = "2023-08-25"
+START_DT_T = "2023-09-11"#"2023-09-11"
 #defined end date_time-Treatment
-END_DT_T = "2023-08-31" 
+END_DT_T = "2023-09-15"#"2023-09-17"
 start_hour, end_hour = '06:00:00', '06:00:00' 
 # event date should be a valid date between start and end date
 # It is recommended that the control and treatment period is equal
-use_weekly_range = True
+use_weekly_range = False#True
 
-incl_corrugate = (False,1.3)
+incl_corrugate = (True,1.3)
+use_vcpu_cost = True
 
 #should the analysis control for changes in inventory position
 include_inv_features = True
 #should the analysis control for changes in routes
 include_routes_features = True
 
-drop_columns = []
+drop_columns = ['dow_weekend','batch_hour_scaled']#["batch_hour_scaled"]
 
 #for normal items, currently the analysis is only for normal items
 location_type = 'Chewy'    
@@ -81,12 +82,12 @@ data_filter = None
 propensity_score_model_options = {"Logistic_Regression":"LReg",
                                   "XgBoost": "xgb"}
 propensity_score_model = propensity_score_model_options.get("Logistic_Regression","LReg")
-#propensity_score_model = propensity_score_model_options.get("XgBoost","LReg")
+propensity_score_model = propensity_score_model_options.get("XgBoost","LReg")
 
 #number of XgBoost estiomators for Regression Model
 n_estimator_reg = 200 #100, 200, 500 are all different options
 max_depth_Xgb_reg = 4 #1,2,3,4,5,6,... are some alternative options
-n_estimator_cl = 1
+n_estimator_cl = 100
 estimator_DML_dict = {'ATTE':'ATTE','ATE':'ATE'}
 estimator_DML = estimator_DML_dict.get('ATE','ATE')
 

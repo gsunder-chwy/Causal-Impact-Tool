@@ -3,7 +3,7 @@ from configs import (EVENT_NAME, START_DT_C, END_DT_C, START_DT_T, END_DT_T, use
                      location_type, itemtype, data_filter, include_inv_features, include_routes_features, drop_columns)
 from configs import steps, propensity_score_model, n_estimator_reg, max_depth_Xgb_reg, n_estimator_cl, estimator_DML, \
     incl_corrugate
-from configs import use_pred, use_shipping_inspector
+from configs import use_pred, use_shipping_inspector, use_vcpu_cost
 from database import Database
 
 import pandas as pd
@@ -78,9 +78,16 @@ def causal_model(RESULT_PATH, EVENT_NAME, propensity_score_model, n_estimator_re
                                 "avg_ship_zone_exp": "avg_ship_zone",
                                 "ship_weight": "ship_weight_invoice", "ship_weight_predicted": "ship_weight",
                                 "dim_weight": "dim_weight_invoice", "dim_weight_pred": "dim_weight",
-                                "actual_weight": "actual_weight_invoice", "actual_weight_pred": "actual_weight"})
+                                "actual_weight": "actual_weight_invoice", "actual_weight_pred": "actual_weight",
+                                "VCPO":"actual_VCPO_invoice","VCPO_pred":"VCPO",
+                                "tcpo":"actual_tcpo_invoice","tcpo_pred":"tcpo",
+                                "tcpp":"actual_tcpp_invoice","tcpp_pred":"tcpp"})
         log.info(f"New Column names: {df.columns}")
 
+    if use_vcpu_cost:
+        log.info(f"The cost metrics include VCPU cost")
+        df = df.rename(columns={"cpo":"cpo_ship","tcpo":"cpo",
+                                "cpp":"cpp_ship","tcpp":"cpp"})
     if data_filter:
         log.info(f"Filtering data based on criteria provided {data_filter}")
         log.info(f"Size of data before filter {df.shape[0]}")
@@ -129,6 +136,7 @@ def causal_model(RESULT_PATH, EVENT_NAME, propensity_score_model, n_estimator_re
     df["order_id"] = df.order_id.astype(int)
 
     if incl_corrugate[0]:
+        log.info("The cost metrics Corrugate Cost")
         df["cpo"] = df["cpo"] + incl_corrugate[1] * df.num_shipments_order
         df["cpp"] = df.cpp + incl_corrugate[1]
 
@@ -219,17 +227,24 @@ def causal_model(RESULT_PATH, EVENT_NAME, propensity_score_model, n_estimator_re
                         # ,'handling_surch_ind','residential_surch_ind']
     # features_to_incl.extend(states_cols)
     if include_routes_features:
+        log.info("Controlling for Routes Related Features")
         features_to_incl.extend(['min_zone', 'num_lz_fc'])
     if include_inv_features:
+        log.info("Controlling for Inventory Related Features")
         features_to_incl.extend(['ship_complete_assort_lzfc', 'num_lz_fc_assort_shipcomplete', 'lz_fc_assort_all_fc',
                                  'min_zone_has_inv', 'min_zone_inv', 'ship_complete_inv_lzfc',
                                  'num_lz_fc_inv_shipcomplete',
                                  'lz_fc_inv_all_fc', 'percent_inv_lzfc'])
+
     # if not is_ORS_feature:
     #    features_to_incl.extend(['avg_ship_zone','max_ship_zone'])
 
     if len(drop_columns) > 0:
+        log.info(f'Dropping Columns {drop_columns}')
         features_to_incl = [f for f in features_to_incl if f not in drop_columns]
+
+    features_to_incl_cpo = features_to_incl
+    features_to_incl_cpo.extend(['num_shipments_order', 'num_shipments_order_fedex', 'num_shipments_order_ontrac'])
 
     dml_data_cpp = DoubleMLData(df, y_col='cpp', d_cols=f'{EVENT_NAME}',
                                 x_cols=features_to_incl)
@@ -245,11 +260,48 @@ def causal_model(RESULT_PATH, EVENT_NAME, propensity_score_model, n_estimator_re
         ml_m_xgb = XGBClassifier(objective="binary:logistic",
                                  eval_metric="logloss",
                                  n_estimators=n_estimator_cl)
+        ml_m_xgb_ = XGBClassifier(objective="binary:logistic",
+                                 eval_metric="logloss",
+                                 n_estimators=n_estimator_cl)
+        ml_m_xgb_.fit(X=df[features_to_incl_cpo], y=df[f'{EVENT_NAME}'])
+        pred_df = pd.DataFrame({"prob": ml_m_xgb_.predict_proba(df[features_to_incl_cpo])[:,-1], "Treatment":df[f'{EVENT_NAME}']})
+        plt.hist(pred_df.query("Treatment==1")["prob"],color="red",alpha=0.1,label="Treatment")
+        plt.hist(pred_df.query("Treatment==0")["prob"],color="blue", alpha=0.1, label="Control")
+        plt.legend()
+        plt.title("Propensity Score Model")
+        plt.xlabel("p(Y=1|X)")
+        plt.savefig(f"{RESULT_PATH}/propensity_score_model.png")
+        plt.show()
+
+        feature_imp_df = pd.DataFrame({"Feature":features_to_incl_cpo,"Importance":ml_m_xgb_.feature_importances_}).sort_values("Importance",ascending=False)
+        print(feature_imp_df.head())
+
+
     else:
         log.info("Using Logistic Regression as the Propensity Score Model")
         ml_m_xgb = LogisticRegression(penalty="l1", solver="saga", max_iter=5000)
+        ml_m_xgb_ = LogisticRegression(penalty="l1", solver="saga", max_iter=5000)
 
     df.to_csv(f"{RESULT_PATH}/model_data.csv")
+
+    log.info('Starting with CPO analysis')
+
+    dml_data_cpo = DoubleMLData(df, y_col='cpo', d_cols=f'{EVENT_NAME}',
+                                x_cols=features_to_incl_cpo)
+
+
+    dml_plr_tree = DoubleMLIRM(dml_data_cpo,
+                               ml_g=ml_l_xgb,
+                               ml_m=ml_m_xgb,
+                               n_folds=5,
+                               n_rep=1,
+                               score=estimator_DML,
+                               dml_procedure='dml2',
+                               trimming_threshold=0.01)
+    dml_plr_tree.fit()
+
+    log.info(dml_plr_tree)
+    log.info('Done with CPO analysis')
 
     dml_plr_tree = DoubleMLIRM(dml_data_cpp,
                                ml_g=ml_l_xgb,
@@ -271,24 +323,6 @@ def causal_model(RESULT_PATH, EVENT_NAME, propensity_score_model, n_estimator_re
     '''
     log.info('Done with CPP analysis')
 
-    log.info('Starting with CPO analysis')
-
-    features_to_incl.extend(['num_shipments_order', 'num_shipments_order_fedex', 'num_shipments_order_ontrac'])
-    dml_data_cpo = DoubleMLData(df, y_col='cpo', d_cols=f'{EVENT_NAME}',
-                                x_cols=features_to_incl)
-
-    dml_plr_tree = DoubleMLIRM(dml_data_cpo,
-                               ml_g=ml_l_xgb,
-                               ml_m=ml_m_xgb,
-                               n_folds=5,
-                               n_rep=1,
-                               score=estimator_DML,
-                               dml_procedure='dml2',
-                               trimming_threshold=0.01)
-    dml_plr_tree.fit()
-
-    log.info(dml_plr_tree)
-
 
 def data_pipeline(dates):
     if not isinstance(dates[0], list):
@@ -297,7 +331,7 @@ def data_pipeline(dates):
     log.info(f'{"#" * 50}')
     start_time = time.time()
 
-    sql = ['; '.join([IO.read_txt(f'{SQL_PATH}/order_info.sql', line_sep='\n')]) for _ in range(len(dates))]
+    sql = ['; '.join([IO.read_txt(f'{SQL_PATH}/order_info_incl_VCPU.sql', line_sep='\n')]) for _ in range(len(dates))]
 
     parameters = [{'start_date_dttm': start_date + ' ' + start_hour, 'end_date_dttm': end_date + ' ' + end_hour,
                    'start_date': start_date, 'end_date': end_date} for start_date, end_date in dates]
